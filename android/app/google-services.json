@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "118465167658",
+    "project_id": "mama-maps-16f8f",
+    "storage_bucket": "mama-maps-16f8f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:118465167658:android:7a062cf67cd819487ede53",
+        "android_client_info": {
+          "package_name": "in.nammamama.mamamaps"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCC68T-FM44veKyr7kB8Y5mpMOKDSVxbZQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
