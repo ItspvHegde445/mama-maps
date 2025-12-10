@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFirestore, collection, addDoc, query, onSnapshot, serverTimestamp, doc, getDoc, setDoc, increment, orderBy, limit } from 'firebase/firestore';
 import { Camera, Shield, X, Check, Search, User, Navigation as NavIcon, ArrowUpDown, Radio, Clock, AlertTriangle, Loader2, MapPin } from 'lucide-react';
-
+import Login from './screens/Login';
 // ==========================================
 // 1. CONFIGURATION & INITIALIZATION
 // ==========================================
@@ -538,27 +538,37 @@ export default function App() {
   };
 
   // --- Render Loading / Auth ---
-  if (loading || !authReady) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
- if (!user) return (
-  <Login
-   
-     onSubmit={async ({email, password}) => {
-      try {
-        await signInWithEmailAndPassword(auth, email, password);
-      } catch (err) {
-        alert(err.message);
-      }
-    }}
-    onSignUp={async ({email, password}) => {
-      try {
-        await createUserWithEmailAndPassword(auth, email, password);
-      } catch (err) {
-        alert(err.message);
-      }
-    }}
-    onSocial={() => alert('Social login coming soon')}
-  />
-);
+if (loading || !authReady) {
+  return (
+    <div className="h-screen flex items-center justify-center">
+      <Loader2 className="animate-spin" />
+    </div>
+  );
+}
+
+if (!user) {
+  return (
+    <Login
+      onSubmit={async ({ email, password }) => {
+        try {
+          await signInWithEmailAndPassword(auth, email, password);
+        } catch (err) {
+          alert(err.message);
+        }
+      }}
+      onSignUp={async ({ email, password }) => {
+        try {
+          await createUserWithEmailAndPassword(auth, email, password);
+        } catch (err) {
+          alert(err.message);
+        }
+      }}
+      onSocial={() => alert('Social login coming soon')}
+    />
+  );
+}
+
+
 
 
   // --- Render Main UI ---
