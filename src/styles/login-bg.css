@@ -1,0 +1,107 @@
+/* src/styles/login-bg.css */
+
+/* wrapper base */
+.login-bg-wrapper {
+  background: #06272e;
+  position: relative;
+  overflow: hidden;
+}
+
+/* big hero image overlay (helmet) - blend and glow */
+.hero-overlay {
+  background: url('/assets/hero.png') center 38% / 42% no-repeat;
+  opacity: 0.22;
+  mix-blend-mode: screen;
+  filter: saturate(120%) blur(0px);
+}
+
+/* layered neon gradient behind everything */
+.login-bg {
+  background:
+    radial-gradient(900px 700px at 16% 26%, rgba(255,130,30,0.28), transparent 55%),
+    radial-gradient(1000px 700px at 82% 72%, rgba(0,255,180,0.20), transparent 60%),
+    linear-gradient(180deg, #04282b 0%, #0b4b45 36%, #184b6b 100%);
+  filter: saturate(120%) brightness(112%);
+}
+
+/* noise / grain */
+.login-noise {
+  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAHElEQVQYV2NkYGD4z0AEYBxVSF0GkQGqgYAOt8GQv8s6RkAAAAASUVORK5CYII=");
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+}
+
+/* dark vignette around edges */
+.login-vignette {
+  background: radial-gradient(circle at center, rgba(0,0,0,0) 48%, rgba(0,0,0,0.6) 100%);
+}
+
+/* soft glow behind card for depth */
+.card-glow {
+  display:flex; align-items:center; justify-content:center;
+  pointer-events: none;
+}
+.glow-pill {
+  width: 520px; height: 320px; border-radius: 42px;
+  background: radial-gradient(400px 200px at 50% 40%, rgba(255,180,100,0.08), rgba(0,255,200,0.055));
+  filter: blur(46px); opacity: 0.95; transform: translateY(10px);
+}
+
+/* left hero image inside card */
+.left-visual { display:flex; align-items:center; justify-content:center; gap:12px; padding: 12px; }
+.left-hero { width: 180px; height: auto; object-fit: contain; filter: drop-shadow(0 24px 32px rgba(0,0,0,0.6)) saturate(120%); transform: translateY(-6px); }
+
+/* glass pill input style */
+.glass-pill {
+  display:flex;
+  align-items:center;
+  gap:12px;
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02), 0 6px 18px rgba(2,8,10,0.4);
+}
+
+/* primary CTA button */
+.primary-cta {
+  background: linear-gradient(180deg, #ffffff, #f2f2f2);
+  color: #0b3b36;
+  font-weight: 800;
+  padding: 10px 14px;
+  border-radius: 999px;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+  transition: transform .12s ease, box-shadow .12s ease;
+  border: none;
+}
+.primary-cta:active { transform: translateY(2px); box-shadow: 0 6px 16px rgba(0,0,0,0.25); }
+.primary-cta:disabled { opacity: 0.6; transform: none; box-shadow: none; }
+
+/* responsive tweaks */
+@media (max-width: 768px) {
+  .left-visual { display:none; }
+  .left-hero { width: 140px; }
+  .glow-pill { width: 360px; height: 220px; }
+}
+
+/* 360° rotation */
+@keyframes spin360 {
+  0%   { transform: rotateY(0deg) translateY(0px); }
+  50%  { transform: rotateY(180deg) translateY(-10px); }
+  100% { transform: rotateY(360deg) translateY(0px); }
+}
+
+/* Raise + pulse */
+@keyframes floatSoft {
+  0%   { transform: translateY(0px); }
+  50%  { transform: translateY(-12px); }
+  100% { transform: translateY(0px); }
+}
+
+/* For the hero graphic */
+.left-hero-animated {
+  animation: spin360 7s linear infinite, floatSoft 4s ease-in-out infinite;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
