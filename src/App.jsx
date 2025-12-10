@@ -2,9 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFirestore, collection, addDoc, query, onSnapshot, serverTimestamp, doc, getDoc, setDoc, increment, orderBy, limit } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Camera, Shield, X, Check, Search, User, Navigation as NavIcon, ArrowUpDown, Radio, Clock, AlertTriangle, Loader2, MapPin } from 'lucide-react';
-import Login from './screens/Login';
+
 // ==========================================
 // 1. CONFIGURATION & INITIALIZATION
 // ==========================================
@@ -25,7 +24,7 @@ const GOOGLE_MAPS_API_KEY = "AIzaSyCwNrhx7F01mLhSFTEAlKnSgNLB_aJskR4";
 const app = initializeApp(Object.keys(firebaseConfig).length > 0 ? firebaseConfig : { apiKey: "placeholder", projectId: "placeholder" });
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
+
 
 // ==========================================
 // 2. CONSTANTS & UTILITIES
@@ -304,14 +303,38 @@ const AuthScreen = () => {
   );
 };
 
+// Report Modal Component
+
 const ReportModal = ({ isOpen, onClose, onSubmit, isUploading }) => {
   const [reportType, setReportType] = useState('trash');
-  const fileInputRef = useRef(null);
 
   if (!isOpen) return null;
 
-  const handleFileChange = (e) => {
-    if (e.target.files[0]) onSubmit(reportType, e.target.files[0]);
+const handleCameraClick = async () => {
+    try {
+      // 1. Force Camera + Use Base64 (Memory) to avoid Disk Permission Errors
+      const image = await CapCamera.getPhoto({
+        quality: 60, // Reduced quality slightly to prevent memory crash
+        allowEditing: false,
+        resultType: CameraResultType.Base64, // <--- THIS IS THE MAGIC FIX
+        source: CameraSource.Camera 
+      });
+
+      // 2. Convert the Base64 string to a Blob (File) for upload
+      const base64Data = `data:image/jpeg;base64,${image.base64String}`;
+      const response = await fetch(base64Data);
+      const blob = await response.blob();
+
+      // 3. Send to upload function
+      onSubmit(reportType, blob);
+
+    } catch (error) {
+      console.error("Camera error:", error);
+      // Only alert if it's a real error, not just the user cancelling
+      if (error.message !== 'User cancelled photos app') {
+        alert("Camera Issue: " + error.message);
+      }
+    }
   };
 
   return (
@@ -319,6 +342,7 @@ const ReportModal = ({ isOpen, onClose, onSubmit, isUploading }) => {
       <div className="absolute inset-0 bg-black/40 pointer-events-auto" onClick={onClose} />
       <div className="bg-white w-full max-w-sm rounded-t-2xl sm:rounded-2xl p-6 z-50 pointer-events-auto animate-in slide-in-from-bottom">
         <h3 className="font-bold text-lg mb-4 text-black">Report an Issue</h3>
+        
         <div className="grid grid-cols-3 gap-3 mb-6">
           {['trash', 'cop', 'pothole'].map((type) => (
             <button
@@ -332,13 +356,14 @@ const ReportModal = ({ isOpen, onClose, onSubmit, isUploading }) => {
             </button>
           ))}
         </div>
-        <input type="file" accept="image/*" capture="environment" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
+
+        {/* Updated Button: Calls handleCameraClick instead of file input */}
         <button
           disabled={isUploading}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={handleCameraClick}
           className="w-full bg-yellow-400 text-black font-bold py-4 rounded-xl shadow-lg active:scale-95 transition-transform flex justify-center items-center gap-2"
         >
-          {isUploading ? <Loader2 className="animate-spin" /> : <Camera />}
+          {isUploading ? <Loader2 className="animate-spin" /> : <Camera size={20} />}
           {isUploading ? "Uploading..." : "Take Photo & Report"}
         </button>
       </div>
@@ -446,18 +471,35 @@ export default function App() {
     setDestQuery(tQ); setDest(tL);
   };
 
-  // --- Action: Submit New Report ---
+  // --- Action: Submit New Report ---a
+
+  // --- Action: Submit New Report (Using Cloudinary) ---
   const handleSubmitReport = async (type, file) => {
     if (!user || !currentLoc) return;
     setIsUploading(true);
 
     try {
-      // 1. Upload Image
-      const storageRef = ref(storage, `reports/${Date.now()}_${user.uid}.jpg`);
-      const snapshot = await uploadBytes(storageRef, file);
-      const downloadURL = await getDownloadURL(snapshot.ref);
+      // 1. Upload Image to Cloudinary
+      const data = new FormData();
+      data.append("file", file);
+      data.append("upload_preset", "mamamaps_preset"); 
+      data.append("cloud_name", "dli9rzoef"); 
 
-      // 2. Save Data
+      // FIXED URL HERE:
+      const res = await fetch("https://api.cloudinary.com/v1_1/dli9rzoef/image/upload", { 
+        method: "post",
+        body: data
+      });
+
+      const json = await res.json();
+      
+      if (!json.secure_url) {
+        throw new Error("Image upload failed: " + (json.error?.message || "Unknown error"));
+      }
+
+      const downloadURL = json.secure_url; 
+
+      // 2. Save Data to Firestore
       await addDoc(collection(db, "reports"), {
         lat: currentLoc.lat,
         lng: currentLoc.lng,
@@ -474,7 +516,7 @@ export default function App() {
       setShowReportModal(false);
     } catch (e) {
       console.error("Error reporting:", e);
-      alert("Failed to upload report");
+      alert("Upload failed. Check your connection.");
     } finally {
       setIsUploading(false);
     }
