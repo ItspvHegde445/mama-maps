@@ -143,48 +143,48 @@ const GoogleMapComponent = ({ center, source, dest, reports, onRouteInfo, onMark
   const userMarker = useRef(null); // Reference for the Blue Dot
   const reportMarkers = useRef([]);
 
-  // Initialize Map
-  useEffect(() => {
-    if (window.google && !mapObj.current) {
-      mapObj.current = new window.google.maps.Map(mapRef.current, {
-        center: center,
-        zoom: 15,
-        disableDefaultUI: true,
-        styles: [{ featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] }]
-      });
-      
-      // Directions Setup
-      dirService.current = new window.google.maps.DirectionsService();
-      dirRender.current = new window.google.maps.DirectionsRenderer({
-        map: mapObj.current,
-        suppressMarkers: false,
-        polylineOptions: { strokeColor: "#2563eb", strokeWeight: 6 }
-      });
+useEffect(() => {
+  if (!window.google || !mapRef.current || mapObj.current) return;
 
-      // Create "Blue Dot" Marker for User
-      userMarker.current = new window.google.maps.Marker({
-        position: center,
-        map: mapObj.current,
-        icon: {
-          path: window.google.maps.SymbolPath.CIRCLE,
-          scale: 8,
-          fillColor: "#4285F4",
-          fillOpacity: 1,
-          strokeColor: "white",
-          strokeWeight: 2,
-        },
-        title: "You"
-      });
-    }
-  }, []);
+  mapObj.current = new window.google.maps.Map(mapRef.current, {
+    center,
+    zoom: 15,
+    disableDefaultUI: true,
+    styles: [{ featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] }]
+  });
 
-  // Update Blue Dot Position when `center` changes (Live Tracking)
-  useEffect(() => {
-    if (userMarker.current && center) {
-      userMarker.current.setPosition(center);
-    }
-  }, [center]);
+  dirService.current = new window.google.maps.DirectionsService();
+  dirRender.current = new window.google.maps.DirectionsRenderer({
+    map: mapObj.current,
+    suppressMarkers: false,
+    polylineOptions: { strokeColor: "#2563eb", strokeWeight: 6 }
+  });
 
+  userMarker.current = new window.google.maps.Marker({
+    map: mapObj.current,
+    position: center,
+    icon: {
+      path: window.google.maps.SymbolPath.CIRCLE,
+      scale: 8,
+      fillColor: "#4285F4",
+      fillOpacity: 1,
+      strokeColor: "white",
+      strokeWeight: 2,
+    },
+    title: "You"
+  });
+}, []); // ✅ empty dependency
+
+
+useEffect(() => {
+  if (!userMarker.current || !mapObj.current || !center) return;
+
+  userMarker.current.setPosition(center);
+  mapObj.current.panTo(center); // remove if you don't want auto-follow
+}, [center]);
+
+
+  
   // Update Report Markers
   useEffect(() => {
     if (!mapObj.current) return;
@@ -229,50 +229,90 @@ const GoogleMapComponent = ({ center, source, dest, reports, onRouteInfo, onMark
 };
 
 // --- NATIVE CAMERA MODAL ---
-const ReportModal = ({ isOpen, onClose, onSubmit, isUploading }) => {
+const ReportModal = ({ isOpen, onClose, onSubmit, isUploading, uploadProgress }) => {
   const [reportType, setReportType] = useState('trash');
+  const fileInputRef = useRef(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+
   if (!isOpen) return null;
 
-  const handleCameraClick = async () => {
-    try {
-      const image = await CapCamera.getPhoto({
-        quality: 50,          
-        width: 800,  // RESIZED to prevent crash
-        height: 800,          
-        allowEditing: false,
-        resultType: CameraResultType.Base64, 
-        source: CameraSource.Camera,
-        saveToGallery: false,
-        correctOrientation: true
-      });
+  const pickCamera = () => {
+    fileInputRef.current.accept = "image/*";
+    fileInputRef.current.capture = "environment";
+    fileInputRef.current.click();
+  };
 
-      const base64Data = `data:image/jpeg;base64,${image.base64String}`;
-      const response = await fetch(base64Data);
-      const blob = await response.blob();
-      onSubmit(reportType, blob);
+  const pickGallery = () => {
+    fileInputRef.current.accept = "image/*";
+    fileInputRef.current.removeAttribute("capture");
+    fileInputRef.current.click();
+  };
 
-    } catch (error) {
-      if (error.message !== 'User cancelled photos app') {
-        alert("Camera Error: " + error.message);
-      }
-    }
+ const onFileChange = (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+
+  // force reset (IMPORTANT)
+  e.target.value = null;
+
+  setSelectedFile(f);
+  setPreviewUrl(URL.createObjectURL(f));
+};
+
+
+  const upload = async () => {
+    if (!selectedFile) return alert("Select image");
+    await onSubmit(reportType, selectedFile);
+    setSelectedFile(null);
+    setPreviewUrl(null);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center pointer-events-none">
-      <div className="absolute inset-0 bg-black/40 pointer-events-auto" onClick={onClose} />
-      <div className="bg-white w-full max-w-sm rounded-t-2xl sm:rounded-2xl p-6 z-50 pointer-events-auto animate-in slide-in-from-bottom">
-        <h3 className="font-bold text-lg mb-4 text-black">Report an Issue</h3>
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          {['trash', 'cop', 'pothole'].map((type) => (
-            <button key={type} onClick={() => setReportType(type)} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${reportType === type ? 'border-black bg-gray-50 ring-1 ring-black' : 'border-gray-200'}`}>
-              <span className="capitalize text-sm font-medium text-black">{type}</span>
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center">
+      <div className="bg-white w-full max-w-sm rounded-t-2xl p-5">
+        <h3 className="font-bold mb-4">Report Issue</h3>
+
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          {['trash', 'cop', 'pothole'].map(t => (
+            <button key={t} onClick={() => setReportType(t)}
+              className={`border rounded-lg py-2 ${reportType === t ? 'bg-black text-white' : ''}`}>
+              {t}
             </button>
           ))}
         </div>
-        <button disabled={isUploading} onClick={handleCameraClick} className="w-full bg-yellow-400 text-black font-bold py-4 rounded-xl shadow-lg active:scale-95 transition-transform flex justify-center items-center gap-2">
-          {isUploading ? <Loader2 className="animate-spin" /> : <Camera size={20} />}
-          {isUploading ? "Uploading..." : "Take Photo & Report"}
+
+        <input
+           ref={fileInputRef}
+           type="file"
+           accept="image/*"
+          hidden
+           onChange={onFileChange}
+          />
+
+
+        {!previewUrl && (
+          <>
+            <button onClick={pickCamera} className="w-full bg-yellow-400 py-3 rounded-lg mb-2">
+              Take Photo
+            </button>
+            <button onClick={pickGallery} className="w-full border py-3 rounded-lg">
+              Choose from Gallery
+            </button>
+          </>
+        )}
+
+        {previewUrl && (
+          <>
+            <img src={previewUrl} className="w-full h-40 object-cover rounded-lg my-3" />
+            <button onClick={upload} className="w-full bg-green-500 py-3 rounded-lg text-white">
+              {isUploading ? `Uploading ${uploadProgress}%` : "Upload"}
+            </button>
+          </>
+        )}
+
+        <button onClick={onClose} className="w-full text-sm text-gray-500 mt-2">
+          Cancel
         </button>
       </div>
     </div>
@@ -436,17 +476,35 @@ export default function App() {
       setAuthReady(true);
     });
 
-    // 📍 BLUE DOT LOGIC: Live Location Watching
     const watchId = navigator.geolocation.watchPosition(
-      (p) => {
-        const newPos = { lat: p.coords.latitude, lng: p.coords.longitude };
-        setCurrentLoc(newPos);
-        // Only set source once at start, don't override typed source
-        if (!source) setSource(newPos); 
-      },
-      (err) => console.warn("GPS Error:", err),
-      { enableHighAccuracy: true }
-    );
+  (p) => {
+    const newPos = {
+      lat: p.coords.latitude,
+      lng: p.coords.longitude
+      
+    };
+
+    console.log("GPS CALLED", p.coords.latitude, p.coords.longitude);
+
+
+    // always update current location
+    setCurrentLoc(newPos);
+
+    // update source ONLY if user did not type a custom source
+    setSource((prev) => {
+      if (!prev || prev.isLive) {
+        return { ...newPos, isLive: true };
+      }
+      return prev; // user typed location → don't override
+    });
+  },
+  (err) => console.warn("GPS Error:", err),
+  {
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: 10000
+  }
+);
 
     return () => {
       unsubAuth();
