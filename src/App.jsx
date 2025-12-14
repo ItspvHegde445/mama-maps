@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFirestore, collection, addDoc, query, onSnapshot, serverTimestamp, doc, getDoc, setDoc, increment, orderBy, limit, where, getDocs } from 'firebase/firestore';
-import { Camera, Shield, X, Search, User, Navigation as NavIcon, ArrowUpDown, Loader2, LogOut } from 'lucide-react';
+import { Camera, Shield, X, Search, User, Navigation as NavIcon, ArrowUpDown, Loader2, LogOut, Trophy, MessageCircle, Send, Locate } from 'lucide-react';
 import { Camera as CapCamera, CameraResultType, CameraSource } from '@capacitor/camera';
 import Login from './screens/Login'; // Imports your cool video login screen
 
@@ -33,6 +33,9 @@ const AVATAR_OPTIONS = Array.from({ length: 30 }, (_, i) =>
 const app = initializeApp(Object.keys(firebaseConfig).length > 0 ? firebaseConfig : { apiKey: "placeholder", projectId: "placeholder" });
 const auth = getAuth(app);
 const db = getFirestore(app);
+// Public Collection Paths
+const PUBLIC_SCORES_PATH = `artifacts/${firebaseConfig.appId}/public/data/user_scores`;
+const RADIO_CHAT_PATH = `artifacts/${firebaseConfig.appId}/public/data/radio_chat`;
 
 // ==========================================
 // 3. UTILITY FUNCTIONS (MATH & LOGIC)
@@ -319,6 +322,170 @@ const ReportModal = ({ isOpen, onClose, onSubmit, isUploading, uploadProgress })
   );
 };
 
+// --- LEADERBOARD SCREEN ---
+const LeaderboardScreen = ({ onClose, userId, getRankForPoints }) => {
+    const [leaderboard, setLeaderboard] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        // Safe check for missing path
+        if (!PUBLIC_SCORES_PATH) return;
+
+        const q = query(
+            collection(db, PUBLIC_SCORES_PATH),
+            orderBy("points", "desc"),
+            limit(50)
+        );
+
+        const unsub = onSnapshot(q, (snapshot) => {
+            const data = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+                rank: getRankForPoints(doc.data().points || 0).name
+            }));
+            setLeaderboard(data);
+            setLoading(false);
+        }, (error) => {
+            console.error("Failed to fetch leaderboard:", error);
+            setLoading(false);
+        });
+
+        return () => unsub();
+    }, [userId, getRankForPoints]);
+
+    const getRankIcon = (index) => {
+        if (index === 0) return <Trophy className="text-yellow-500 fill-yellow-500" size={24} />;
+        if (index === 1) return <Trophy className="text-gray-400 fill-gray-400" size={24} />;
+        if (index === 2) return <Trophy className="text-orange-700 fill-orange-700" size={24} />;
+        return <span className="text-gray-500 font-bold">{index + 1}</span>;
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col animate-in slide-in-from-right">
+            <div className="bg-white p-4 shadow-md flex items-center justify-between border-b border-gray-200">
+                <div className="flex items-center gap-3">
+                    <button onClick={onClose} className="p-2 -ml-2 hover:bg-gray-100 rounded-full"><ArrowUpDown className="rotate-90" size={24} /></button>
+                    <h1 className="text-xl font-black flex items-center gap-2"><Trophy className="text-yellow-500" /> Leaderboard</h1>
+                </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {loading ? (
+                    <div className="flex justify-center p-10"><Loader2 className="animate-spin text-gray-500" size={32} /></div>
+                ) : (
+                    leaderboard.map((user, index) => (
+                        <div 
+                            key={user.id} 
+                            className={`flex items-center p-3 rounded-xl shadow-sm transition-all ${user.id === userId ? 'bg-blue-100 border-2 border-blue-500' : 'bg-white border border-gray-100'}`}
+                        >
+                            <div className="w-10 text-center mr-3">{getRankIcon(index)}</div>
+                            <div className="w-10 h-10 rounded-full overflow-hidden mr-3 border-2 border-white shadow-sm">
+                                <img src={user.avatar || AVATAR_OPTIONS[0]} alt="avatar" className="w-full h-full object-cover" />
+                            </div>
+                            <div className="flex-1">
+                                <p className="font-bold truncate text-gray-900 leading-tight">{user.username || user.id}</p>
+                                <p className="text-xs text-gray-600 leading-tight">{user.rank}</p>
+                            </div>
+                            <div className="text-right">
+                                <span className="text-lg font-black text-green-600">{user.points}</span>
+                                <span className="text-xs text-gray-500 block leading-none">PTS</span>
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+        </div>
+    );
+};
+
+// --- RADIO CHAT COMPONENT ---
+const RadioChat = ({ onClose, user, profile, AVATAR_OPTIONS }) => {
+    const [messages, setMessages] = useState([]);
+    const [newMessage, setNewMessage] = useState('');
+    const chatRef = useRef(null);
+
+    useEffect(() => {
+        if (!RADIO_CHAT_PATH) return;
+        
+        const q = query(
+            collection(db, RADIO_CHAT_PATH),
+            orderBy('createdAt', 'desc'),
+            limit(50)
+        );
+
+        const unsub = onSnapshot(q, (snapshot) => {
+            const msgs = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            })).reverse(); 
+            setMessages(msgs);
+        });
+
+        return () => unsub();
+    }, []);
+
+    useEffect(() => {
+        if (chatRef.current) {
+            chatRef.current.scrollTop = chatRef.current.scrollHeight;
+        }
+    }, [messages]);
+
+    const handleSendMessage = async (e) => {
+        e.preventDefault();
+        if (newMessage.trim() === '') return;
+
+        try {
+            await addDoc(collection(db, RADIO_CHAT_PATH), {
+                text: newMessage.trim(),
+                senderId: user.uid,
+                senderUsername: profile.username || user.email.split('@')[0],
+                senderAvatar: profile.avatar || AVATAR_OPTIONS[0],
+                createdAt: serverTimestamp(),
+            });
+            setNewMessage('');
+        } catch (error) {
+            console.error("Error sending message:", error);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col animate-in slide-in-from-right">
+            <div className="bg-white p-4 shadow-md flex items-center justify-between border-b border-gray-200">
+                <div className="flex items-center gap-3">
+                    <button onClick={onClose} className="p-2 -ml-2 hover:bg-gray-100 rounded-full"><ArrowUpDown className="rotate-90" size={24} /></button>
+                    <h1 className="text-xl font-black flex items-center gap-2"><MessageCircle className="text-blue-500" /> Radio Channel</h1>
+                </div>
+            </div>
+
+            <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-4 pb-20">
+                {messages.map((msg, index) => (
+                    <div 
+                        key={msg.id} 
+                        className={`flex ${msg.senderId === user.uid ? 'justify-end' : 'justify-start'}`}
+                    >
+                        <div className={`flex items-start max-w-xs md:max-w-md ${msg.senderId === user.uid ? 'flex-row-reverse' : 'flex-row'}`}>
+                            <img src={msg.senderAvatar} alt="avatar" className="w-8 h-8 rounded-full object-cover shadow-sm flex-shrink-0 mx-2 mt-1" />
+                            <div className={`p-3 rounded-xl shadow-md transition-all ${msg.senderId === user.uid ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-gray-900 rounded-tl-none border border-gray-200'}`}>
+                                <p className="text-xs font-bold mb-1 opacity-70">{msg.senderId === user.uid ? 'You' : `@${msg.senderUsername}`}</p>
+                                <p className="text-sm break-words">{msg.text}</p>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <div className="p-4 bg-white border-t border-gray-200 fixed bottom-0 left-0 right-0 max-w-sm mx-auto">
+                <form onSubmit={handleSendMessage} className="flex gap-2">
+                    <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Say something..." className="flex-1 p-3 bg-gray-100 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <button type="submit" disabled={!newMessage.trim()} className="w-12 h-12 bg-black text-white rounded-xl flex items-center justify-center shadow-lg active:scale-95 transition-transform disabled:opacity-50">
+                        <Send size={20} />
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+};
+
 // --- PROFILE SETTINGS COMPONENT --- 
 
 const ProfileSettings = ({ user, profile, onClose, onSave, onLogout }) => {
@@ -512,6 +679,22 @@ export default function App() {
     };
   }, []);
 
+// --- NEW: FIX GPS ADDRESS TEXT ---
+  // This replaces "Current Location" text with the actual street address
+  useEffect(() => {
+    if (!currentLoc || !window.google || !window.google.maps) return;
+
+    // Only update if the text is still the default placeholder "Current Location"
+    if (sourceQuery === 'Current Location') {
+      const geocoder = new window.google.maps.Geocoder();
+      geocoder.geocode({ location: currentLoc }, (results, status) => {
+        if (status === 'OK' && results[0]) {
+          setSourceQuery(results[0].formatted_address);
+        }
+      });
+    }
+  }, [currentLoc, sourceQuery]);
+
   // 2. Load Profile Data
   useEffect(() => {
     if (!user) return;
@@ -562,8 +745,49 @@ export default function App() {
     setDestQuery(tQ); setDest(tL);
   };
 
-  // Action: Submit Report to Cloudinary & Firebase
-  // --- REPLACE YOUR handleSubmitReport WITH THIS ---
+  //Hand locate me button
+  // --- MANUAL GPS TRIGGER ---
+  const handleLocateMe = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
+    
+    // Optional: Show a loading toast if you have one
+    // showToast("Locating...", "success"); 
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const newPos = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        };
+        
+        setCurrentLoc(newPos);
+        setSource({ ...newPos, isLive: true }); // Update source for routing
+        
+        // REVERSE GEOCODING: Turn coordinates into an address (e.g., "MG Road")
+        if (window.google && window.google.maps) {
+           const geocoder = new window.google.maps.Geocoder();
+           geocoder.geocode({ location: newPos }, (results, status) => {
+             if (status === 'OK' && results[0]) {
+               setSourceQuery(results[0].formatted_address); // Sets the actual address text
+             } else {
+               setSourceQuery("Current Location (GPS Locked)");
+             }
+           });
+        }
+      },
+      (error) => {
+        console.error("Error getting location:", error);
+        alert("Unable to retrieve location. Please check your GPS settings.");
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 } // Forces fresh data
+    );
+  };
+
+  //Handle Report Submission
+
   const handleSubmitReport = async (type, fileOrBlob) => {
     if (!user || !currentLoc) {
       showToast('Login or location missing', 'error');
@@ -654,10 +878,11 @@ export default function App() {
       onSocial={() => alert('Social login coming soon')}
     />
   );
-
+// -----------------------MAIN APP RENDER ------
+                            //return function--
   return (
     <div className="h-screen w-full flex flex-col bg-white relative font-sans">
-      {/* VIEW SWITCHER: PROFILE OR MAP */}
+      {/* VIEW SWITCHER: PROFILE, LEADERBOARD, RADIO, OR MAP */}
       {currentView === 'profile' ? (
         <ProfileSettings 
           user={user} 
@@ -665,6 +890,20 @@ export default function App() {
           onClose={() => setCurrentView('map')}
           onSave={(updatedData) => setProfile(prev => ({...prev, ...updatedData}))}
           onLogout={handleLogout}
+        />
+      ) : currentView === 'leaderboard' ? (
+        <LeaderboardScreen 
+            onClose={() => setCurrentView('map')}
+            userId={user.uid}
+            getRankForPoints={getRankForPoints}
+        />
+      ) : currentView === 'radio' ? (
+        <RadioChat
+            onClose={() => setCurrentView('map')}
+            user={user}
+            profile={profile}
+            AVATAR_OPTIONS={AVATAR_OPTIONS}
+            appId={appId}
         />
       ) : (
         <>
@@ -676,9 +915,24 @@ export default function App() {
                 <span className="text-black font-bold text-sm tracking-tight">MAMA MAPS</span>
               </div>
               <div className="flex gap-2 items-center">
+                {/* Radio Chat Button */}
+                <button 
+                  onClick={() => setCurrentView('radio')} 
+                  className="bg-white text-gray-800 p-2 rounded-full shadow-md hover:bg-gray-100 transition-colors active:scale-95"
+                >
+                    <MessageCircle size={20} className="text-blue-500" />
+                </button>
+                {/* Leaderboard Button */}
+                <button 
+                  onClick={() => setCurrentView('leaderboard')} 
+                  className="bg-white text-gray-800 p-2 rounded-full shadow-md hover:bg-gray-100 transition-colors active:scale-95"
+                >
+                    <Trophy size={20} className="text-yellow-500 fill-yellow-500/10" />
+                </button>
+                {/* Profile Button */}
                 <button 
                   onClick={() => setCurrentView('profile')} 
-                  className="bg-black text-white pl-2 pr-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 shadow-md hover:scale-105 transition-transform active:scale-95"
+                  className="bg-black text-white pl-2 pr-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 shadow-md hover:opacity-90 transition-transform active:scale-95"
                 >
                   <div className="w-8 h-8 rounded-full bg-gray-700 border-2 border-white overflow-hidden relative">
                      {profile.avatar ? (
@@ -694,8 +948,17 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {/* SEARCH BAR WITH LOCATE BUTTON */}
             <div className="bg-white p-1.5 rounded-2xl shadow-xl border border-gray-100 pointer-events-auto flex flex-col gap-1">
               <div className="flex gap-2 items-center">
+                <button 
+                  onClick={handleLocateMe}
+                  className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 active:scale-95 transition-transform"
+                  title="Use Current Location"
+                >
+                  <Locate size={20} />
+                </button>
                 <GooglePlacesInput placeholder="Start Location" value={sourceQuery} onChange={setSourceQuery} onSelect={(p) => { setSourceQuery(p.name); setSource(p); }} icon={NavIcon} />
                 <button onClick={swapLoc} className="bg-gray-50 p-2 rounded-full text-gray-500 hover:bg-gray-100"><ArrowUpDown size={16} /></button>
               </div>
@@ -749,21 +1012,31 @@ export default function App() {
                 <div className="bg-white rounded-2xl shadow-2xl p-5 border border-gray-200 animate-in slide-in-from-bottom">
                   <div className="flex justify-between items-start mb-4">
                     <div>
-                      <h3 className="text-lg font-bold capitalize flex items-center gap-2">{selectedReport.type === 'cop' ? '👮 Police Reported' : '🗑️ Trash Reported'}</h3>
+                      <h3 className="text-lg font-bold capitalize flex items-center gap-2">
+                        {selectedReport.type === 'cop' ? '👮 Police Reported' : selectedReport.type === 'trash' ? '🗑️ Trash Reported' : '⚠️ Pothole Reported'}
+                      </h3>
                       <p className="text-sm text-gray-500">Reported {selectedReport.distanceAway}m away from you.</p>
+                      {selectedReport.verifiedCount > 0 && (
+                          <p className="text-xs text-green-600 flex items-center gap-1 mt-1 font-bold"><CheckCheck size={14} /> Confirmed by {selectedReport.verifiedCount} user{selectedReport.verifiedCount > 1 ? 's' : ''}</p>
+                      )}
                     </div>
                     <button onClick={() => setSelectedReport(null)} className="p-1 bg-gray-100 rounded-full"><X size={20} /></button>
                   </div>
                   {selectedReport.imageUrl && (
                     <div className="h-32 w-full mb-4 rounded-xl overflow-hidden bg-gray-100"><img src={selectedReport.imageUrl} alt="Report" className="w-full h-full object-cover" /></div>
                   )}
-                  {selectedReport.distanceAway < 150 ? (
+
+                  {selectedReport.reporterId === user.uid ? (
+                    <div className="bg-blue-100 text-blue-600 p-3 rounded-xl text-center text-sm font-medium">This is your report. Thank you!</div>
+                  ) : selectedReport.isVerifiedByUser ? (
+                    <div className="bg-green-100 text-green-600 p-3 rounded-xl text-center text-sm font-medium">You have already verified this report.</div>
+                  ) : selectedReport.distanceAway < 150 ? (
                     <div className="flex gap-3">
                       <button onClick={() => handleVerify(true)} className="flex-1 bg-green-500 text-white py-3 rounded-xl font-bold text-sm shadow-sm active:scale-95 transition-transform">Still There (+5 pts)</button>
                       <button onClick={() => handleVerify(false)} className="flex-1 bg-red-100 text-red-600 py-3 rounded-xl font-bold text-sm active:scale-95 transition-transform">Not There</button>
                     </div>
                   ) : (
-                    <div className="bg-gray-100 text-gray-500 p-3 rounded-xl text-center text-xs font-medium">You must be closer to verify this report.</div>
+                    <div className="bg-gray-100 text-gray-500 p-3 rounded-xl text-center text-xs font-medium">You must be within 150m to verify this report.</div>
                   )}
                 </div>
               </div>
@@ -779,5 +1052,5 @@ export default function App() {
         </div>
       )}
     </div>
-  );
+  ); 
 }
